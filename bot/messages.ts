@@ -1,4 +1,5 @@
 import { TelegramError, Telegraf } from 'telegraf';
+import { ExtraReplyMessage } from 'telegraf/typings/telegram-types';
 import {
   getCurrency,
   numberFormat,
@@ -1043,27 +1044,40 @@ const fiatSentMessages = async (
   i18nBuyer: I18nContext,
   i18nSeller: I18nContext,
 ) => {
-  try {
-    await ctx.telegram.sendMessage(
-      buyer.tg_id,
-      i18nBuyer.t('I_told_seller_you_sent_fiat', {
-        sellerUsername: seller.username,
-      }),
-    );
-    await ctx.telegram.sendMessage(
-      seller.tg_id,
-      i18nSeller.t('buyer_told_me_that_sent_fiat', {
-        buyerUsername: buyer.username,
-      }),
-    );
-    await ctx.telegram.sendMessage(
-      seller.tg_id,
-      i18nSeller.t('release_order_cmd'),
-      { parse_mode: 'Markdown' },
-    );
-  } catch (error) {
-    logger.error(error);
-  }
+  // The order is already FIAT_SENT when we get here, so each notification must
+  // be attempted independently: one recipient being unreachable (e.g. they
+  // blocked the bot) must not prevent the other party from being notified.
+  const send = async (
+    recipient: string,
+    tgId: string,
+    text: string,
+    extra?: ExtraReplyMessage,
+  ) => {
+    try {
+      await ctx.telegram.sendMessage(tgId, text, extra);
+    } catch (error) {
+      logger.error(
+        `fiatSentMessages: failed to notify ${recipient} (tg_id: ${tgId}): ${String(error)}`,
+      );
+    }
+  };
+  await send(
+    'buyer',
+    buyer.tg_id,
+    i18nBuyer.t('I_told_seller_you_sent_fiat', {
+      sellerUsername: seller.username,
+    }),
+  );
+  await send(
+    'seller',
+    seller.tg_id,
+    i18nSeller.t('buyer_told_me_that_sent_fiat', {
+      buyerUsername: buyer.username,
+    }),
+  );
+  await send('seller', seller.tg_id, i18nSeller.t('release_order_cmd'), {
+    parse_mode: 'Markdown',
+  });
 };
 
 const orderOnfiatSentStatusMessages = async (
