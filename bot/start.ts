@@ -39,6 +39,7 @@ import * as BlockModule from './modules/block';
 import {
   rateUser,
   cancelAddInvoice,
+  tryCancelHoldInvoice,
   addInvoice,
   cancelShowHoldInvoice,
   showHoldInvoice,
@@ -51,7 +52,6 @@ import {
 import { showReleaseConfirmationMessage } from './messages';
 import {
   settleHoldInvoice,
-  cancelHoldInvoice,
   payToBuyer,
   subscribeInvoice,
   getInvoice,
@@ -443,7 +443,7 @@ const initialize = (
         }
       }
 
-      if (order.hash) await cancelHoldInvoice({ hash: order.hash });
+      if (!(await tryCancelHoldInvoice(ctx, order))) return;
 
       if (dispute) {
         dispute.status = 'SELLER_REFUNDED';

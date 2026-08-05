@@ -296,6 +296,26 @@ const saveUserReview = async (targetUser: UserDocument, rating: number) => {
   }
 };
 
+// Cancels an order's hold invoice when it has one. Returns true on success (or
+// when there's nothing to cancel) and false when the cancellation failed — in
+// which case the caller MUST NOT proceed as if the order was canceled. On
+// failure the triggering user is notified so they can retry; job/system callers
+// (which pass `bot` instead of a real context) get no message (issue #899).
+const tryCancelHoldInvoice = async (
+  ctx: MainContext,
+  order: IOrder,
+): Promise<boolean> => {
+  if (!order.hash) return true;
+  try {
+    await cancelHoldInvoice({ hash: order.hash });
+    return true;
+  } catch (error) {
+    logger.error(`cancelHoldInvoice failed for order ${order._id}: ${error}`);
+    await messages.cancelHoldInvoiceErrorMessage(ctx);
+    return false;
+  }
+};
+
 const cancelAddInvoice = async (
   ctx: CommunityContext,
   order: IOrder | null = null,
@@ -320,9 +340,7 @@ const cancelAddInvoice = async (
     if (order === null) return;
 
     // We make sure the seller can't send us sats now
-    if (order.hash) {
-      await cancelHoldInvoice({ hash: order.hash });
-    }
+    if (!(await tryCancelHoldInvoice(ctx, order))) return;
 
     const user = await User.findOne({ _id: order.buyer_id });
 
@@ -545,9 +563,7 @@ const cancelShowHoldInvoice = async (
     if (order === null) return;
 
     // We make sure the seller can't send us sats now
-    if (order.hash) {
-      await cancelHoldInvoice({ hash: order.hash });
-    }
+    if (!(await tryCancelHoldInvoice(ctx, order))) return;
     const buyerUser = await User.findOne({ _id: order.buyer_id });
     if (buyerUser === null) throw new Error('buyerUser was not found');
     const sellerUser = await User.findOne({ _id: order.seller_id });
@@ -729,7 +745,7 @@ const cancelOrder = async (
 
     if (order.status === 'PENDING') {
       // If we already have a holdInvoice we cancel it and return the money
-      if (order.hash) await cancelHoldInvoice({ hash: order.hash });
+      if (!(await tryCancelHoldInvoice(ctx, order))) return;
 
       order.status = 'CANCELED';
       order.canceled_by = user._id;
@@ -808,7 +824,7 @@ const cancelOrder = async (
       updateOrder.seller_cooperativecancel
     ) {
       // If we already have a holdInvoice we cancel it and return the money
-      if (updateOrder.hash) await cancelHoldInvoice({ hash: updateOrder.hash });
+      if (!(await tryCancelHoldInvoice(ctx, updateOrder))) return;
 
       updateOrder.status = 'CANCELED';
       updateOrder.canceled_by = String(user._id);
@@ -985,6 +1001,7 @@ const showQrCode = async (
 };
 
 export {
+  tryCancelHoldInvoice,
   rateUser,
   saveUserReview,
   cancelAddInvoice,

@@ -420,6 +420,20 @@ const genericErrorMessage = async (
   }
 };
 
+// Tells the user who triggered a cancel that it couldn't complete because the
+// hold invoice cancellation failed (e.g. LND unreachable), so they know to
+// retry instead of being left with no feedback (issue #899). The same cancel
+// helpers also run from the expiry job with `bot` in place of a real context,
+// so we no-op when there is no interactive context to reply to.
+const cancelHoldInvoiceErrorMessage = async (ctx: MainContext) => {
+  try {
+    if (typeof ctx?.reply !== 'function') return;
+    await ctx.reply(ctx.i18n.t('generic_error'));
+  } catch (error) {
+    logger.error(error);
+  }
+};
+
 const beginTakeBuyMessage = async (
   ctx: MainContext,
   bot: HasTelegram,
@@ -2327,6 +2341,7 @@ export {
   toAdminChannelPendingPaymentFailedMessage,
   toAdminChannelOrderErrorMessage,
   genericErrorMessage,
+  cancelHoldInvoiceErrorMessage,
   refundCooperativeCancelMessage,
   toBuyerExpiredOrderMessage,
   toSellerExpiredOrderMessage,
